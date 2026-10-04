@@ -50,6 +50,20 @@ _HEIGHT_JS = """() => {
   return Math.max(s.scrollHeight, innerHeight);
 }"""
 
+# Popups often lock scrolling (overflow: hidden) or cover the page with a full-screen layer.
+_UNLOCK_SCROLL_JS = r"""() => {
+  for (const el of [document.documentElement, document.body]) {
+    if (getComputedStyle(el).overflowY === 'hidden') el.style.setProperty('overflow-y', 'auto', 'important');
+  }
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' || !(+cs.zIndex >= 100)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width >= innerWidth * 0.9 && r.height >= innerHeight * 0.9) el.style.setProperty('display', 'none', 'important');
+  }
+  return true;
+}"""
+
 # Prefer declining non-essential cookies; accept only if no decline button exists.
 _CONSENT_CLICK_JS = r"""() => {
   const KNOWN = ['#onetrust-reject-all-handler', '#CybotCookiebotDialogBodyButtonDecline',
@@ -276,6 +290,26 @@ async def _preload(page: Page, vh: int, max_px: int) -> int:
     return min(await page.evaluate(_HEIGHT_JS), max_px)
 
 
+async def _scroll_to(page: Page, y: int, device: str) -> int:
+    """Scroll to ``y``; if the page doesn't get there, let it settle, re-detect the scroller and
+    lift popup scroll locks before giving up (a silent failure would drop the rest of the page)."""
+    actual = await page.evaluate(_SCROLL_TO_JS, y)
+    for fix in ("settle", "unlock"):
+        if actual >= y - 2:
+            return actual
+        if fix == "settle":
+            await page.wait_for_timeout(400)
+            await page.evaluate(_FIND_SCROLLER_JS)
+        else:
+            await page.keyboard.press("Escape")
+            await page.evaluate(_UNLOCK_SCROLL_JS)
+        actual = await page.evaluate(_SCROLL_TO_JS, y)
+    if actual < y - 2:
+        log.warning("%s: wanted to scroll to %d but reached %d (page height now %d)",
+                    device, y, actual, await page.evaluate(_HEIGHT_JS))
+    return actual
+
+
 async def capture_device(browser: Browser, url: str, profile: DeviceProfile, *, locale: str,
                          allow_private: bool) -> DeviceCapture:
     started = time.monotonic()
@@ -319,7 +353,7 @@ async def capture_device(browser: Browser, url: str, profile: DeviceProfile, *, 
         positions, total = plan_positions(page_height, vh, profile.max_screens)
         prev_bottom = vh
         for y in positions[1:]:
-            actual = await page.evaluate(_SCROLL_TO_JS, y)
+            actual = await _scroll_to(page, y, profile.name)
             await page.wait_for_timeout(450)  # in-view animations
             overlap = max(0, prev_bottom - actual)
             if vh - overlap < 40:

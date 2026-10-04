@@ -18,6 +18,8 @@ from anthropic import AsyncAnthropic
 from .capture import DeviceCapture
 from .features import (
     CONTENT,
+    CRAFT,
+    REALITY,
     FIRST_SCREEN,
     HUMAN_BY_ID,
     HUMAN_SIGNALS,
@@ -45,7 +47,10 @@ def _catalog() -> str:
         lines.append(f"# {title}")
         lines += [f"- {s.id}: {s.en}. {s.look_for}" for s in SIGNALS if s.group == group]
     lines += ["</ai_signals>", "<human_signals>"]
-    lines += [f"- {h.id}: {h.en}. {h.look_for}" for h in HUMAN_SIGNALS]
+    for kind, title in ((CRAFT, "Craft — people designed or wrote this site"),
+                        (REALITY, "Real content — a real organization is behind it")):
+        lines.append(f"# {title}")
+        lines += [f"- {h.id}: {h.en}. {h.look_for}" for h in HUMAN_SIGNALS if h.kind == kind]
     lines.append("</human_signals>")
     return "\n".join(lines)
 
@@ -71,7 +76,7 @@ For each signal you observe give four numbers from 0 to 1 and an evidence string
 
 Scale anchor, the hero of a v0/Lovable-style landing page: the purple→blue gradient word in the headline is presence 1, intensity 0.8, coverage 1, typicality 1; the small "✨ New" badge above it is 1, 0.6, 1, 1; a faint dot grid behind everything is 0.9, 0.3, 1, 0.9.
 
-Human signals use the same presence / intensity / coverage scale (no typicality). They are evidence that people made and curated this particular site — things a generator could not produce. Content that every site of its genre carries is weak evidence even when it is real: a portfolio's owner portrait, name, email and project cards; a business's phone number. Report those with presence ≤ 0.3.
+Human signals use the same presence / intensity / coverage scale (no typicality) and come in two kinds. Craft signals say people designed or wrote the site. Real-content signals say a real organization is behind it — but AI site builders are routinely fed real photos, addresses and programme names, so real content inside a stock template is still an AI-made site; report it as it is and the formula weighs it lightly. Content that every site of its genre carries is weak evidence even when it is real: a portfolio's owner portrait, name, email and project cards; a business's phone number. Report those with presence ≤ 0.3.
 
 Judgment rules
 - Modern is not the same as AI. Large headlines, clean layouts, cards and sans-serif type are everywhere in human-made design and the formula already treats them as weak signals. Report them at face value.
@@ -234,37 +239,59 @@ class Analyzer:
             params["betas"] = ["server-side-fallback-2026-07-01"]
             params["fallbacks"] = "default"
 
-        async with self.client.beta.messages.stream(**params) as stream:
-            message = await stream.get_final_message()
-            request_id = stream.request_id
+        usage = dict.fromkeys(("input_tokens", "output_tokens", "cache_creation_input_tokens",
+                               "cache_read_input_tokens"), 0)
+        for attempt in (1, 2):
+            message, request_id = await self._request(params)
+            for key in usage:
+                usage[key] += getattr(message.usage, key, 0) or 0
+            data = _parse_message(message)
+            if not looks_degenerate(data, capture.has_rest):
+                break
+            # A rare sloppy sample (e.g. summary "placeholder", nothing below the fold): ask again.
+            log.warning("degenerate %s analysis of %s (attempt %d, request %s)%s", capture.device,
+                        capture.final_url, attempt, request_id, "; retrying" if attempt == 1 else "")
 
-        if message.stop_reason == "refusal":
-            details = getattr(message, "stop_details", None)
-            raise AnalysisError("refusal", getattr(details, "category", None) or "")
-        if message.stop_reason == "max_tokens":
-            raise AnalysisError("truncated", f"hit max_tokens={MAX_TOKENS}")
-        text = "".join(block.text for block in message.content if block.type == "text")
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise AnalysisError("invalid_json", str(exc)) from exc
-
-        usage = message.usage
         result = Analysis(
             device=capture.device,
             page_type=data.get("page_type") or "other",
             summary=str(data.get("summary") or "").strip(),
             zones=parse_observations(data, capture.has_rest),
             model=message.model,
-            usage={
-                "input_tokens": usage.input_tokens or 0,
-                "output_tokens": usage.output_tokens or 0,
-                "cache_creation_input_tokens": usage.cache_creation_input_tokens or 0,
-                "cache_read_input_tokens": usage.cache_read_input_tokens or 0,
-            },
+            usage=usage,
             elapsed=time.monotonic() - started,
             raw=data,
         )
         log.info("analyzed %s %s in %.1fs (%s, usage %s, request %s)", capture.device, capture.final_url,
                  result.elapsed, result.model, result.usage, request_id)
         return result
+
+    async def _request(self, params: dict):
+        async with self.client.beta.messages.stream(**params) as stream:
+            return await stream.get_final_message(), stream.request_id
+
+
+def _parse_message(message) -> dict:
+    if message.stop_reason == "refusal":
+        details = getattr(message, "stop_details", None)
+        raise AnalysisError("refusal", getattr(details, "category", None) or "")
+    if message.stop_reason == "max_tokens":
+        raise AnalysisError("truncated", f"hit max_tokens={MAX_TOKENS}")
+    text = "".join(block.text for block in message.content if block.type == "text")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise AnalysisError("invalid_json", str(exc)) from exc
+
+
+_JUNK_SUMMARIES = {"", "placeholder", "summary", "todo", "tbd", "n/a", "none", "..."}
+
+
+def looks_degenerate(data: dict, has_rest: bool) -> bool:
+    """A response that skipped the work: junk summary, or an empty page below a busy first screen."""
+    summary = str(data.get("summary") or "").strip().strip(".… ").lower()
+    if len(summary) < 25 or summary in _JUNK_SUMMARIES:
+        return True
+    first, rest = data.get("first_screen") or {}, data.get("rest") or {}
+    return bool(has_rest and not rest.get("signals") and not rest.get("human_signals")
+                and len(first.get("signals") or []) >= 4)

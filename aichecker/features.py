@@ -19,6 +19,9 @@ VISUAL = "visual"
 STRUCTURE = "structure"
 CONTENT = "content"
 
+CRAFT = "craft"  # people designed or wrote this site
+REALITY = "reality"  # a real organization is behind it — an AI builder fed real material shows this too
+
 FIRST_SCREEN = "first_screen"
 REST = "rest"
 ZONES = (FIRST_SCREEN, REST)
@@ -37,6 +40,9 @@ class Signal:
     impact: float  # how strongly a visitor registers it (§1)
     template: float  # how much it says "generic template" regardless of AI (§18)
     weight: float = 1.0
+    # Decisive signals are fingerprints, not impressions (§16 "boolean for objective things"):
+    # they count at full presence however small they are, wherever on the page they appear.
+    decisive: bool = False
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,7 @@ class HumanSignal:
     ru: str
     look_for: str
     strength: float  # h_k in §9 / §11
+    kind: str = REALITY
 
 
 @dataclass(frozen=True)
@@ -62,8 +69,8 @@ class Pattern:
     steepness: float = 8.0
 
 
-def _s(id, group, en, ru, look_for, spec, impact, template, weight=1.0) -> Signal:
-    return Signal(id, group, en, ru, look_for, spec, impact, template, weight)
+def _s(id, group, en, ru, look_for, spec, impact, template, weight=1.0, decisive=False) -> Signal:
+    return Signal(id, group, en, ru, look_for, spec, impact, template, weight, decisive)
 
 
 SIGNALS: tuple[Signal, ...] = (
@@ -192,8 +199,9 @@ SIGNALS: tuple[Signal, ...] = (
        "The page is its genre's default section list with nothing of its own: SaaS (features → "
        "how it works → testimonials → pricing → FAQ → CTA); portfolio (about → skills grid → "
        "experience timeline → project cards with 'Live demo' / 'GitHub' buttons → contact form); "
-       "agency (services → process → work → testimonials → contact); restaurant or shop (about "
-       "→ highlights → reviews → booking).",
+       "agency (services → process → work → testimonials → contact); nonprofit (mission → focus "
+       "areas → impact numbers → stories → partners → donate / volunteer); restaurant or shop "
+       "(about → highlights → reviews → booking).",
        (0.40, 0.70), 0.60, 0.90),
     _s("identical_card_grids", STRUCTURE, "Identical card grids", "Сетки одинаковых карточек",
        "Grids of identical cards: 3, 4 or 6 columns of icon + title + two-line text.",
@@ -251,8 +259,9 @@ SIGNALS: tuple[Signal, ...] = (
        "The genre's stock opening line. SaaS: 'Transform your X with Y', 'X, reimagined', 'The "
        "future of X is here', 'Build faster. Ship smarter.'; portfolio: 'Hi, I'm {Name} — "
        "Full-Stack Developer', 'Turning ideas into meaningful digital experiences', 'Crafting "
-       "digital experiences that…'; business: 'Where {X} meets {Y}', 'Your trusted partner in…'. "
-       "A textbook match is presence 1 and typicality 1.",
+       "digital experiences that…'; nonprofit: 'Empowering Communities, Transforming Lives', "
+       "'Building a Brighter Future', '{Verb}ing a New Future.'; business: 'Where {X} meets {Y}', "
+       "'Your trusted partner in…'. A textbook match is presence 1 and typicality 1.",
        (0.55, 0.85), 0.70, 0.55),
     _s("vague_claims", CONTENT, "Vague interchangeable claims", "Размытые взаимозаменяемые обещания",
        "Claims that fit any product or person: 'Boost productivity', 'Save time', 'Built for "
@@ -263,10 +272,12 @@ SIGNALS: tuple[Signal, ...] = (
        "Staccato triplets ('Fast. Secure. Scalable.'), 'Not just X — it's Y', em-dash-heavy, "
        "overly balanced phrasing.",
        (0.55, 0.85), 0.55, 0.40),
-    _s("placeholder_leftovers", CONTENT, "Placeholder leftovers", "Остатки заглушек",
-       "Lorem ipsum, 'Your Company', john@example.com, (555) numbers, 'Feature One', dummy "
-       "items, broken template text.",
-       (0.45, 0.80), 0.80, 0.85),
+    _s("placeholder_leftovers", CONTENT, "Generator leftovers", "Остатки генератора",
+       "Placeholder text left in a finished page: '(Placeholder)' labels, '[Your Name]', 'Your "
+       "Company', john@example.com, (555) numbers, 'Feature One', dummy items. Textbook (typicality "
+       "1): a generator's annotation such as '12A Registration (Placeholder)' or '[Insert stat]'; "
+       "lorem ipsum in an unfinished human-made theme is typicality 0.4.",
+       (0.30, 0.90), 0.90, 0.85, decisive=True),
     _s("hype_claims", CONTENT, "Hype claims", "Хайповые обещания",
        "'AI-powered' on everything, '10x faster', 'the world's first', '#1 platform' and "
        "similar unbacked superlatives. Typicality is low when AI genuinely is the product.",
@@ -298,19 +309,21 @@ HUMAN_SIGNALS: tuple[HumanSignal, ...] = (
                 "Write-ups with named clients, concrete numbers, process artifacts, before/after "
                 "work. Project cards with a stack list and 'Live demo' / 'GitHub' buttons are the "
                 "template default — weak.", 0.40),
-    HumanSignal("distinct_voice", "Distinct voice and insider language", "Свой голос и профессиональный язык",
-                "Domain jargon, idiosyncratic tone, opinions, humor, specific product or process "
-                "names a generator wouldn't invent.", 0.45),
+    HumanSignal("distinct_voice", "Distinct writing voice", "Свой авторский голос",
+                "Copy that reads as written by a person: idiosyncratic tone, opinions, humor, uneven "
+                "rhythm, insider phrasing. Real names of programs, places or products don't count "
+                "here — an AI builder fed real facts still writes in its own voice.", 0.45, CRAFT),
     HumanSignal("custom_layout", "Custom, irregular layout", "Нестандартная вёрстка",
                 "Art-directed or editorial layout that breaks template patterns: asymmetry, custom "
-                "grids, unusual navigation, deliberate 'mess'.", 0.60),
+                "grids, unusual navigation, deliberate 'mess'.", 0.60, CRAFT),
     HumanSignal("handmade_visuals", "Handmade or original visuals", "Авторская графика",
                 "Custom illustrations, hand-drawn elements, handwriting, original brand artwork, "
                 "real product renders or real UI screenshots of the product being sold. Project "
-                "thumbnails in a portfolio grid are weak.", 0.50),
-    HumanSignal("brand_identity", "Distinctive brand identity", "Узнаваемый фирменный стиль",
-                "A coherent, distinctive system: custom logo or wordmark, unusual palette, "
-                "characterful type pairing applied consistently.", 0.50),
+                "thumbnails in a portfolio grid are weak.", 0.50, CRAFT),
+    HumanSignal("brand_identity", "Distinctive design system", "Собственная дизайн-система",
+                "A visual system designed for this brand and applied across the page: unusual palette, "
+                "characterful type, custom graphic language. An uploaded logo placed into a stock "
+                "template doesn't count (presence ≤ 0.3).", 0.50, CRAFT),
     HumanSignal("living_content", "Signs of a living business", "Признаки живого бизнеса",
                 "Dated news or blog posts, events, changelogs, social feeds, awards with years, "
                 "history ('since 1998').", 0.40),
@@ -375,14 +388,14 @@ PATTERNS: tuple[Pattern, ...] = (
     ),
     Pattern(
         "editorial_ai_system", "'Tasteful' AI default", "«Вкусный» AI-шаблон", ZONES,
-        (
-            (("warm_editorial_palette",), 1.2),
-            (("serif_italic_accent",), 1.3),
-            (("mono_labels",), 1.0),
-            (("numbered_sections",), 1.0),
-            (("pill_buttons",), 0.6),
-            (("grid_dot_background",), 0.4),
-            (("eyebrow",), 0.5),
+        (   # the signature trio first; cream paper, mono labels and 01/02/03 are frequent extras
+            (("serif_italic_accent",), 1.6),
+            (("eyebrow", "pill_badge", "mono_labels"), 1.0),
+            (("pill_buttons", "dual_cta"), 0.8),
+            (("warm_editorial_palette",), 0.8),
+            (("numbered_sections",), 0.6),
+            (("grid_dot_background",), 0.3),
+            (("default_typography",), 0.4),
         ),
         threshold=0.40, ai_weight=1.0, template_weight=0.5,
     ),
@@ -428,6 +441,8 @@ def _validate() -> None:
     duplicates = {i for i in ids if ids.count(i) > 1}
     if duplicates:
         raise ValueError(f"duplicate catalog ids: {sorted(duplicates)}")
+    if any(h.kind not in (CRAFT, REALITY) for h in HUMAN_SIGNALS):
+        raise ValueError("human signal kind must be craft or reality")
     for s in SIGNALS:
         lo, hi = s.specificity
         if not (0 <= lo <= hi <= 1 and 0 <= s.impact <= 1 and 0 <= s.template <= 1):

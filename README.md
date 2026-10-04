@@ -64,8 +64,8 @@ Every zone (first screen, rest of page) of every render is scored on its own:
 p   = presence · √(intensity · sat(coverage))          sat(c) = (1 − e^(−3c)) / (1 − e^(−3))
 s   = s_min + (s_max − s_min) · typicality
 I_j = normalized sigmoid over the members of pattern j
-H   = 1 − exp(−Σ h_k · e_k)
-z   = B + K · Σ w·m·s·p + Σ v_j·I_j − H_max · H
+H   = 1 − exp(−Σ h_k · e_k)                        separately for craft and real content
+z   = B + K · Σ w·m·s·p + Σ v_j·I_j − Hc·H_craft − Hr·H_real
 AI  = 100 · σ(z)
 ```
 
@@ -85,15 +85,33 @@ How `FORMULA.md` maps to the code:
 | §6, §7, §12 — non-linear interaction patterns | 7 patterns: AI hero, AI section system, SaaS cards, AI visual system, "tasteful" AI default, synthetic social proof, LLM copywriting |
 | §8 — 0–100 and the five labels | `σ(z)·100`; `bucket()` |
 | §9 — the formula | `scoring.score_zone()` |
-| §10, §11 — human signals, non-linear | 12 human signals; `H = 1 − exp(−Σ h·e)`, capped at `H_max`, so one owner photo can't rescue an AI site |
+| §10, §11 — human signals, non-linear | 12 human signals; `H = 1 − exp(−Σ h·e)` per kind, capped — see *Human evidence* below |
+| §16 — booleans for objective things | *decisive* signals (generator leftovers like "(Placeholder)") count at full presence, page-wide |
 | §18 — two models | AI-likeness (uses AI-specificity) and Template-likeness (uses template relevance) |
 | §18 — learn weights from ratings | rating buttons → `data/ratings.jsonl`; observations → `data/results.jsonl` |
 
 The catalog judges every genre against its own stock template, not just SaaS landings: "Hi, I'm {Name} —
 Full-Stack Developer" heroes, "Turning ideas into meaningful digital experiences" taglines, tech-stack
 chips, starfield backgrounds, AI-chat buttons and the about → skills → projects → contact skeleton of an
-AI-built portfolio count just like "Transform your workflow with AI" does on a SaaS page. Content every
-site of its genre has (a portfolio owner's photo, email, project cards) is only weak human evidence.
+AI-built portfolio count just like "Transform your workflow with AI" does on a SaaS page.
+
+### Human evidence: craft vs real content
+
+AI site builders are routinely fed a real organization's photos, address and programme names, so real
+content doesn't mean people built the site. Human signals therefore come in two kinds:
+
+- **Craft** — a custom layout, original visuals, a distinctive design system, a personal writing voice.
+  Evidence that people designed or wrote the site; it can lower the score by up to `Hc = 1.4` logits.
+- **Real content** — real photos, addresses, programmes, team, reviews, history. Evidence that a real
+  organization exists; capped at `Hr = 0.45` logits (a few points). Content every site of its genre has —
+  a portfolio owner's photo and email, project cards — is reported as weak even when real.
+
+This deliberately departs from FORMULA.md §10, where real photos, local content and reviews take a site
+from 78 to 58: two AI-built sites with real content (a developer portfolio and an NGO site) were scored
+34 that way, which is the opposite of how they look.
+
+**Generator leftovers** — "(Placeholder)" labels, "[Your Name]", dummy items in a finished page — are
+*decisive*: a fingerprint rather than an impression, so they count at full strength wherever they appear.
 
 The calibration constants (`B`, `K`, `H_max`, …) live in `scoring.Params`. Two test files pin them:
 `tests/test_scoring.py` with synthetic archetypes and FORMULA.md's own examples ("78 → 58 with three human
@@ -119,7 +137,7 @@ shell — Claude Code, for one, exports `CLAUDE_EFFORT`, which would otherwise c
 | `CLAUDE_FALLBACKS` | `true` | server-side retry on another model if a safety classifier declines |
 | `FIRST_SCREEN_WEIGHT` | `0.6` | 0.5 = no first-screen preference |
 | `DESKTOP_WEIGHT` | `0.5` | |
-| `MAX_SCREENS_DESKTOP` / `MAX_SCREENS_MOBILE` | `8` / `12` | the main cost knob; long pages are sampled down to the footer |
+| `MAX_SCREENS_DESKTOP` / `MAX_SCREENS_MOBILE` | `8` / `12` | the main cost knob; long pages are sampled down to the footer. With very low caps (e.g. 2 / 3) Claude sees the first screen plus one or two more and relies on the page text for the rest; "Screens analyzed: 2 of 6" in Details means exactly that |
 | `MOBILE_DEVICE` | `iPhone 17` | any Playwright device descriptor |
 | `MAX_CONCURRENT_CHECKS` | `2` | further checks wait in a queue |
 | `CHECKS_PER_USER_PER_HOUR` | `10` | `0` = unlimited |
@@ -143,6 +161,8 @@ Sonnet: five real sites, from plain to textbook AI. Opus: the textbook AI fixtur
 `max` gave the same score (96 vs 97) and the same observations (90%+ of signals in common), so `low` is
 the default — higher effort mostly buys deliberation, not different measurements. The system prompt
 (~5K tokens) is prompt-cached, so repeat checks read it at a fraction of the price.
+If an answer is obviously sloppy (an empty summary, nothing reported below a busy first screen),
+the analyzer asks once more; both attempts are counted in the usage line.
 
 ## Calibrating the weights
 

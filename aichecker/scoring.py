@@ -3,11 +3,17 @@
 Per zone (first screen / rest of page) of each device render:
 
     p   = presence · √(intensity · sat(coverage))                        §4, §17
+          (decisive signals: p = presence, taken page-wide)              §16
     s   = s_min + (s_max − s_min) · typicality                           §5
     I_j = normalized sigmoid over the members of pattern j               §6–7
-    H   = 1 − exp(−Σ h_k · e_k)                                          §11
-    z   = B + K · Σ wᵢ·mᵢ·sᵢ·pᵢ + Σ vⱼ·Iⱼ − H_max · H                      §9
+    H   = 1 − exp(−Σ h_k · e_k), separately for craft and real content   §11
+    z   = B + K · Σ wᵢ·mᵢ·sᵢ·pᵢ + Σ vⱼ·Iⱼ − Hc_max · H_craft − Hr_max · H_real   §9
     AI  = 100 · σ(z)                                                     §8
+
+Human evidence comes in two kinds. Craft (a custom layout, original visuals, a design
+system, a personal writing voice) says people built the site and can remove a lot.
+Real content (photos, addresses, programmes, team) only says a real organization is
+behind it — an AI builder fed real material produces that too — so its cap is small.
 
 The template-likeness model (§18, "two models") is the same expression with
 each signal's ``template`` relevance in place of AI-specificity.
@@ -22,6 +28,7 @@ import math
 from dataclasses import dataclass, field
 
 from .features import (
+    CRAFT,
     FIRST_SCREEN,
     HUMAN_SIGNALS,
     PATTERNS,
@@ -35,10 +42,12 @@ from .features import (
 class Params:
     ai_bias: float = -1.6  # B — a page with no evidence lands at ~17 ("very human")
     ai_scale: float = 0.55  # K
-    ai_human_cap: float = 1.4  # H_max — human evidence can remove at most this much logit
+    ai_human_cap: float = 1.4  # Hc_max — craft evidence can remove at most this much logit
+    ai_reality_cap: float = 0.45  # Hr_max — real-content evidence, at most this much
     template_bias: float = -1.3
     template_scale: float = 1.0
     template_human_cap: float = 1.0
+    template_reality_cap: float = 0.2
     coverage_k: float = 3.0  # steepness of the coverage saturation curve
 
 
@@ -155,16 +164,20 @@ def pattern_value(pattern: Pattern, p: dict[str, float]) -> float:
 
 
 def score_zone(zone: str, obs: ZoneObs, params: Params = PARAMS,
-               exclude: frozenset[str] = frozenset()) -> ZoneResult:
+               exclude: frozenset[str] = frozenset(),
+               page_decisive: dict[str, Obs] | None = None) -> ZoneResult:
+    """``page_decisive``: the strongest observation of each decisive signal anywhere on the page."""
     p: dict[str, float] = {}
     signal_terms: dict[str, float] = {}
     evidence: dict[str, str] = {}
     e_ai = e_tpl = 0.0
     for sig in SIGNALS:
         o = obs.signals.get(sig.id)
+        if sig.decisive and page_decisive and sig.id in page_decisive:
+            o = page_decisive[sig.id]
         if o is None or sig.id in exclude:
             continue
-        pi = effective_presence(o, params.coverage_k)
+        pi = clamp(o.presence) if sig.decisive else effective_presence(o, params.coverage_k)
         if pi <= 0:
             continue
         lo, hi = sig.specificity
@@ -195,24 +208,33 @@ def score_zone(zone: str, obs: ZoneObs, params: Params = PARAMS,
         )
         pattern_members[pat.id] = [sid for sid, v in strongest if v > 0.25][:4]
 
-    # §11: independent human signals add up with diminishing returns.
-    raw_human: dict[str, float] = {}
+    # §11: independent human signals add up with diminishing returns — per kind.
+    raw: dict[str, dict[str, float]] = {"craft": {}, "reality": {}}
     for hs in HUMAN_SIGNALS:
         o = obs.human.get(hs.id)
         if o is None or hs.id in exclude:
             continue
         e = effective_presence(o, params.coverage_k)
         if e > 0:
-            raw_human[hs.id] = hs.strength * e
+            raw["craft" if hs.kind == CRAFT else "reality"][hs.id] = hs.strength * e
             evidence[hs.id] = o.evidence
-    total_human = sum(raw_human.values())
-    h = 1.0 - math.exp(-total_human)
-    ai_reduction = params.ai_human_cap * h
-    human_terms = {k: ai_reduction * v / total_human for k, v in raw_human.items()} if total_human else {}
+    evidence_by_kind = {kind: 1.0 - math.exp(-sum(v.values())) for kind, v in raw.items()}
+    caps = {"craft": (params.ai_human_cap, params.template_human_cap),
+            "reality": (params.ai_reality_cap, params.template_reality_cap)}
+    human_terms: dict[str, float] = {}
+    ai_reduction = tpl_reduction = 0.0
+    for kind, values in raw.items():
+        total = sum(values.values())
+        if not total:
+            continue
+        reduction = caps[kind][0] * evidence_by_kind[kind]
+        ai_reduction += reduction
+        tpl_reduction += caps[kind][1] * evidence_by_kind[kind]
+        human_terms.update({k: reduction * v / total for k, v in values.items()})
+    h = 1.0 - (1.0 - evidence_by_kind["craft"]) * (1.0 - evidence_by_kind["reality"])
 
     z_ai = params.ai_bias + params.ai_scale * e_ai + sum(pattern_terms.values()) - ai_reduction
-    z_tpl = (params.template_bias + params.template_scale * e_tpl + tpl_patterns
-             - params.template_human_cap * h)
+    z_tpl = (params.template_bias + params.template_scale * e_tpl + tpl_patterns - tpl_reduction)
     return ZoneResult(
         ai=100.0 * sigmoid(z_ai),
         template=100.0 * sigmoid(z_tpl),
@@ -238,7 +260,13 @@ def score_device(obs: DeviceObs, first_screen_weight: float = 0.6, params: Param
                  exclude: frozenset[str] = frozenset()) -> DeviceResult:
     if FIRST_SCREEN not in obs.zones:
         raise ValueError("a device render needs at least the first screen")
-    zones = {z: score_zone(z, zo, params, exclude) for z, zo in obs.zones.items()
+    page_decisive: dict[str, Obs] = {}
+    for zo in obs.zones.values():
+        for sig in SIGNALS:
+            o = zo.signals.get(sig.id) if sig.decisive else None
+            if o is not None and o.presence > page_decisive.get(sig.id, Obs()).presence:
+                page_decisive[sig.id] = o
+    zones = {z: score_zone(z, zo, params, exclude, page_decisive) for z, zo in obs.zones.items()
              if z in (FIRST_SCREEN, REST)}
     weights = _weights(list(zones), FIRST_SCREEN, first_screen_weight)
     return DeviceResult(
