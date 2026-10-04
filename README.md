@@ -124,6 +124,9 @@ shell — Claude Code, for one, exports `CLAUDE_EFFORT`, which would otherwise c
 | `MAX_CONCURRENT_CHECKS` | `2` | further checks wait in a queue |
 | `CHECKS_PER_USER_PER_HOUR` | `10` | `0` = unlimited |
 | `ALLOWED_USERS` | empty | comma-separated Telegram user IDs; empty = open to everyone |
+| `MAX_CHECKS_PER_DAY` | `0` | checks per user per day (server time, survives restarts); `0` = unlimited |
+| `REQUIRED_CHANNEL` | empty | e.g. `@mychannel`: only subscribers can run checks. The bot must be an **admin** of the channel |
+| `REQUIRED_CHANNEL_URL` | empty | invite link for a private channel (when `REQUIRED_CHANNEL` is a `-100…` ID) |
 | `ALLOW_PRIVATE_URLS` | `false` | only for testing local sites |
 
 ## Cost and speed

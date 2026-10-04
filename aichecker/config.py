@@ -26,6 +26,9 @@ class Settings:
     browser_locale: str
     max_concurrent_checks: int
     checks_per_hour: int
+    checks_per_day: int
+    required_channel: str
+    required_channel_url: str
     allowed_users: frozenset[int]
     allow_private_urls: bool
     capture_timeout: float
@@ -79,6 +82,9 @@ def load_settings() -> Settings:
         browser_locale=(os.getenv("BROWSER_LOCALE") or "en-US").strip(),
         max_concurrent_checks=_int("MAX_CONCURRENT_CHECKS", 2, 1),
         checks_per_hour=_int("CHECKS_PER_USER_PER_HOUR", 10, 0),
+        checks_per_day=_int("MAX_CHECKS_PER_DAY", 0, 0),
+        required_channel=(os.getenv("REQUIRED_CHANNEL") or "").strip(),
+        required_channel_url=(os.getenv("REQUIRED_CHANNEL_URL") or "").strip(),
         allowed_users=allowed,
         allow_private_urls=_bool("ALLOW_PRIVATE_URLS", False),
         capture_timeout=_float("CAPTURE_TIMEOUT", 120, 10, 900),

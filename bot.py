@@ -34,6 +34,7 @@ from aichecker import report
 from aichecker.config import Settings, load_settings
 from aichecker.i18n import pick_lang, t
 from aichecker.pipeline import DEVICES, Checker, CheckError, CheckResult
+from aichecker.quota import DailyQuota
 from aichecker.storage import RATINGS, RESULTS, Storage
 from aichecker.urlguard import UrlError, extract_url
 
@@ -41,6 +42,10 @@ log = logging.getLogger("aichecker.bot")
 
 RATING_BUCKETS = ((0, 20), (20, 40), (40, 60), (60, 80), (80, 100))
 KEEP_RESULTS = 300  # recent results kept in memory for the inline buttons
+
+
+class SubscriptionCheck(CallbackData, prefix="sub"):
+    pass
 
 
 class ReportAction(CallbackData, prefix="r"):
@@ -119,6 +124,7 @@ class BotApp:
         self.detail_views: set[tuple[int, int]] = set()  # (chat_id, message_id) showing details
         self.active_users: set[int] = set()
         self.history: dict[int, deque[float]] = defaultdict(deque)
+        self.daily = DailyQuota(settings.data_dir / "daily_usage.json", settings.checks_per_day)
         self.lang_override: dict[int, str] = {}
         self.router = Router()
         self.router.message.register(self.on_start, CommandStart())
@@ -127,6 +133,7 @@ class BotApp:
         self.router.message.register(self.on_check_command, Command("check"))
         self.router.message.register(self.on_text, F.chat.type == "private", F.text | F.caption)
         self.router.callback_query.register(self.on_action, ReportAction.filter())
+        self.router.callback_query.register(self.on_subscription_check, SubscriptionCheck.filter())
 
     def lang_for(self, user: User | None) -> str:
         if user is None:
@@ -182,10 +189,17 @@ class BotApp:
         if user.id in self.active_users:
             await message.answer(t(lang, "busy"))
             return
+        if not await self._is_subscribed(message.bot, user.id):
+            await self._ask_to_subscribe(message, lang)
+            return
         wait = self._rate_limit_wait(user.id)
         if wait:
             await message.answer(t(lang, "rate_limited", limit=self.settings.checks_per_hour,
                                    minutes=max(1, math.ceil(wait / 60))))
+            return
+        if not self.daily.take(user.id):
+            await message.answer(t(lang, "daily_limit", limit=self.settings.checks_per_day,
+                                   hours=self.daily.resets_in_hours()))
             return
         self.history[user.id].append(time.time())
         self.active_users.add(user.id)
@@ -206,7 +220,9 @@ class BotApp:
             result = await self.checker.check(raw_url, lang, view.update)
         except UrlError as exc:
             if message.from_user and self.history[message.from_user.id]:
-                self.history[message.from_user.id].pop()  # a bad link doesn't use up the hourly quota
+                self.history[message.from_user.id].pop()  # a bad link doesn't use up the quotas
+            if message.from_user:
+                self.daily.refund(message.from_user.id)
             await view.finish(t(lang, f"url_{exc.code}"))
             return
         except CheckError as exc:
@@ -231,9 +247,52 @@ class BotApp:
                 await message.answer_photo(media[0].media, caption=media[0].caption)
         except TelegramAPIError:
             log.warning("could not send screenshots for %s", result.final_url, exc_info=True)
-        await message.answer(report.render_report(result, lang, self.settings),
-                             reply_markup=self._keyboard(result.id, lang, details=False, user_id=user_id))
+        text = report.render_report(result, lang, self.settings)
+        left = self.daily.remaining(user_id) if user_id is not None else None
+        if left is not None:
+            text += f"\n\n{t(lang, 'checks_left', n=left)}"
+        await message.answer(text, reply_markup=self._keyboard(result.id, lang, details=False, user_id=user_id))
         await view.finish()
+
+    # ── channel subscription ──────────────────────────────────────────────────
+    async def _is_subscribed(self, bot: Bot | None, user_id: int) -> bool:
+        channel = self.settings.required_channel
+        if not channel or bot is None:
+            return True
+        try:
+            member = await bot.get_chat_member(channel, user_id)
+        except TelegramAPIError:
+            # Usually: the bot isn't an admin of the channel. Fail closed and tell the owner.
+            log.error("cannot check membership in %s — add the bot to the channel as an admin", channel)
+            return False
+        status = getattr(member.status, "value", member.status)
+        return status in ("creator", "administrator", "member") or (
+            status == "restricted" and getattr(member, "is_member", False))
+
+    def _channel_url(self) -> str:
+        if self.settings.required_channel_url:
+            return self.settings.required_channel_url
+        return f"https://t.me/{self.settings.required_channel.lstrip('@')}"
+
+    async def _ask_to_subscribe(self, message: Message, lang: str) -> None:
+        kb = InlineKeyboardBuilder()
+        kb.button(text=t(lang, "btn_subscribe"), url=self._channel_url())
+        kb.button(text=t(lang, "btn_check_sub"), callback_data=SubscriptionCheck())
+        kb.adjust(1)
+        await message.answer(t(lang, "need_subscription", channel=escape(self.settings.required_channel)),
+                             reply_markup=kb.as_markup())
+
+    async def on_subscription_check(self, query: CallbackQuery) -> None:
+        lang = self.lang_for(query.from_user)
+        if await self._is_subscribed(query.bot, query.from_user.id):
+            await query.answer(t(lang, "sub_ok"), show_alert=True)
+            if isinstance(query.message, Message):
+                try:
+                    await query.message.edit_text(t(lang, "sub_ok"))
+                except TelegramBadRequest:
+                    pass
+        else:
+            await query.answer(t(lang, "sub_missing"), show_alert=True)
 
     def _remember(self, result: CheckResult) -> None:
         self.results[result.id] = result
@@ -316,8 +375,18 @@ async def main() -> None:
                     BotCommand(command="help", description="How it works" if lang == "en" else "Как это работает"),
                     BotCommand(command="lang", description="Русский / English")]
         await bot.set_my_commands(commands, language_code=code)
-    log.info("bot started: model=%s effort=%s first_screen_weight=%.2f",
-             settings.model, settings.effort, settings.first_screen_weight)
+    log.info("bot started: model=%s effort=%s first_screen_weight=%.2f daily_limit=%s channel=%s",
+             settings.model, settings.effort, settings.first_screen_weight,
+             settings.checks_per_day or "off", settings.required_channel or "off")
+    if settings.required_channel:
+        try:
+            me = await bot.get_me()
+            member = await bot.get_chat_member(settings.required_channel, me.id)
+            if getattr(member.status, "value", member.status) not in ("administrator", "creator"):
+                log.error("the bot must be an admin of %s to check subscriptions", settings.required_channel)
+        except TelegramAPIError as exc:
+            log.error("cannot access %s (%s) — add the bot to the channel as an admin",
+                      settings.required_channel, exc)
     try:
         await dispatcher.start_polling(bot)
     finally:
