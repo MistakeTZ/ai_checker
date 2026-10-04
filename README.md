@@ -7,7 +7,7 @@ desktop and the mobile version, with the reasons.
    declines the cookie banner, captures the first screen, then scrolls and captures the rest.
    A DOM probe measures what screenshots can't (repeated CTA labels, gradient text, blur, eyebrows,
    pills, icon tiles, fonts, background tone…).
-2. **Claude** (`claude-opus-5-5`, vision) acts as the measuring instrument: for 46 AI signals and 12 human
+2. **Claude** (`claude-opus-5-5`, vision) acts as the measuring instrument: for 48 AI signals and 12 human
    signals it reports presence / intensity / coverage / typicality, separately for the first screen and
    the rest of the page.
 3. **The formula from `FORMULA.md`** (deterministic, in `aichecker/scoring.py`) turns those observations
@@ -89,10 +89,17 @@ How `FORMULA.md` maps to the code:
 | §18 — two models | AI-likeness (uses AI-specificity) and Template-likeness (uses template relevance) |
 | §18 — learn weights from ratings | rating buttons → `data/ratings.jsonl`; observations → `data/results.jsonl` |
 
-The calibration constants (`B`, `K`, `H_max`, …) live in `scoring.Params`. `tests/test_scoring.py` pins the
-behavior with synthetic archetypes — a v0-style landing ≥ 85, a human local business < 20, a ThemeForest
-template 25–55 with template-likeness well above it, FORMULA.md's "78 → 58 with three human signals"
-example — so you can retune and immediately see what breaks.
+The catalog judges every genre against its own stock template, not just SaaS landings: "Hi, I'm {Name} —
+Full-Stack Developer" heroes, "Turning ideas into meaningful digital experiences" taglines, tech-stack
+chips, starfield backgrounds, AI-chat buttons and the about → skills → projects → contact skeleton of an
+AI-built portfolio count just like "Transform your workflow with AI" does on a SaaS page. Content every
+site of its genre has (a portfolio owner's photo, email, project cards) is only weak human evidence.
+
+The calibration constants (`B`, `K`, `H_max`, …) live in `scoring.Params`. Two test files pin them:
+`tests/test_scoring.py` with synthetic archetypes and FORMULA.md's own examples ("78 → 58 with three human
+signals"), and `tests/test_real_observations.py` with real Claude observations of five sites (an
+AI-builder portfolio ≥ 75, a textbook AI landing ≥ 85, linear.app ≤ 35, joshwcomeau.com ≤ 25,
+paulgraham.com ≤ 20). Retune and you immediately see what breaks.
 
 ### Builder fingerprints
 
@@ -102,12 +109,13 @@ the report but deliberately **not** scored: the score is about how the design lo
 
 ## Configuration
 
-All settings are environment variables (see `.env.example`):
+All settings live in `.env` (see `.env.example`). Values in `.env` win over variables inherited from the
+shell — Claude Code, for one, exports `CLAUDE_EFFORT`, which would otherwise change the bot's effort.
 
 | Variable | Default | |
 |---|---|---|
 | `CLAUDE_MODEL` | `claude-opus-5-5` | |
-| `CLAUDE_EFFORT` | `low` | `medium` thinks longer; see cost below |
+| `CLAUDE_EFFORT` | `low` | higher levels think much longer for the same observations; see below |
 | `CLAUDE_FALLBACKS` | `true` | server-side retry on another model if a safety classifier declines |
 | `FIRST_SCREEN_WEIGHT` | `0.6` | 0.5 = no first-screen preference |
 | `DESKTOP_WEIGHT` | `0.5` | |
@@ -120,18 +128,18 @@ All settings are environment variables (see `.env.example`):
 
 ## Cost and speed
 
-Measured on a textbook AI landing page (both devices, Claude Opus 5.5):
+Both devices per check:
 
-| effort | time per check | output tokens per device | cost per check |
+| model, effort | time per check | output tokens | cost per check |
 |---|---|---|---|
-| `low` | ~35 s | ~3K | ~$0.18 |
-| `medium` | ~3.5 min | ~26K | ~$1.15 |
+| `claude-sonnet-5-5`, `low` | 11–59 s | 1–6K | $0.03–0.12 |
+| `claude-opus-5-5`, `low` | ~35 s | ~6K | ~$0.18 |
+| `claude-opus-5-5`, `max` | ~3.5 min | ~52K | ~$1.15 |
 
-Both effort levels produced the same score (96 vs 97) and the same observations (90%+ of signals in
-common, effective presence differing by 0.05–0.08 on average), so `low` is the default. Nuanced real pages make Claude
-deliberate longer; the "Pace" paragraph of the system prompt keeps its reasoning short while still
-asking for every visible signal. The system prompt (~4.8K tokens) is prompt-cached, so repeat checks
-read it at a fraction of the price.
+Sonnet: five real sites, from plain to textbook AI. Opus: the textbook AI fixture page, where `low` and
+`max` gave the same score (96 vs 97) and the same observations (90%+ of signals in common), so `low` is
+the default — higher effort mostly buys deliberation, not different measurements. The system prompt
+(~5K tokens) is prompt-cached, so repeat checks read it at a fraction of the price.
 
 ## Calibrating the weights
 

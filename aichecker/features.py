@@ -78,8 +78,9 @@ SIGNALS: tuple[Signal, ...] = (
        "phrase of the hero headline in a purple/blue gradient.",
        (0.25, 0.60), 0.55, 0.30),
     _s("glow_effects", VISUAL, "Glows and blurred color orbs", "Свечение и размытые цветные пятна",
-       "Neon halos, colored glow shadows, blurred gradient orbs/blobs, aurora or mesh "
-       "backgrounds, spotlight beams. Textbook AI: violet/blue blurred blobs behind the hero.",
+       "Neon halos, colored glow shadows, glowing rings around a portrait or button, blurred "
+       "gradient orbs/blobs, aurora or mesh backgrounds, spotlight beams. Textbook AI: "
+       "violet/blue blurred blobs behind the hero.",
        (0.30, 0.75), 0.60, 0.30),
     _s("glassmorphism", VISUAL, "Glassmorphism", "Глассморфизм",
        "Frosted translucent panels with backdrop blur and thin light borders (cards, "
@@ -105,9 +106,10 @@ SIGNALS: tuple[Signal, ...] = (
     _s("numbered_sections", VISUAL, "Numbered section labels", "Нумерация секций 01/02/03",
        "'01 / 02 / 03' numbering of sections, steps or features used as a decorative device.",
        (0.30, 0.65), 0.45, 0.50),
-    _s("grid_dot_background", VISUAL, "Grid, dot or grain backgrounds", "Фоны с сеткой, точками или зерном",
-       "Faint grid lines, dot matrices or noise grain behind content, often faded out with "
-       "a radial mask.",
+    _s("grid_dot_background", VISUAL, "Grid, dot, starfield or grain backgrounds",
+       "Фоны с сеткой, точками, звёздами или зерном",
+       "Faint grid lines, dot matrices, starfields, particles or constellation lines, or noise "
+       "grain behind content, often faded out with a radial mask.",
        (0.30, 0.60), 0.35, 0.35),
     _s("pill_badge", VISUAL, "Pill announcement badge", "Бейдж-«таблетка» с анонсом",
        "Small pill-shaped chips such as '✨ New: …', 'Introducing v2 →', 'Now in beta', "
@@ -129,7 +131,8 @@ SIGNALS: tuple[Signal, ...] = (
        "one atop every feature card.",
        (0.45, 0.80), 0.55, 0.65),
     _s("sparkle_ai_icons", VISUAL, "Sparkles and 'AI' iconography", "Искорки ✨ и «AI»-иконки",
-       "✨ sparkles, magic wands, stars, brains, robots or 'AI' glyphs used as decoration.",
+       "✨ sparkles, magic wands, stars, brains, robots or 'AI' glyphs used as decoration, or "
+       "a floating AI-assistant / chatbot button with a robot or sparkle icon.",
        (0.45, 0.80), 0.55, 0.25),
     _s("emoji_icons", VISUAL, "Emoji used as icons", "Эмодзи вместо иконок",
        "Emojis (🚀 ⚡ 🎯 ✅) used as feature icons, bullets or heading decorations.",
@@ -140,8 +143,8 @@ SIGNALS: tuple[Signal, ...] = (
        "Real product screenshots and genuine photos are NOT this.",
        (0.70, 0.95), 0.90, 0.20),
     _s("abstract_3d", VISUAL, "Abstract 3D renders", "Абстрактный 3D",
-       "Glossy spheres, chrome blobs, floating geometric shapes or isometric 3D illustrations "
-       "with no specific meaning.",
+       "Glossy spheres, chrome blobs, floating low-poly rocks, wireframe spheres, geometric "
+       "shapes or isometric 3D illustrations with no specific meaning.",
        (0.30, 0.65), 0.50, 0.35),
     _s("fake_ui_mockup", VISUAL, "Fake dashboard mockups", "Фейковые макеты дашбордов",
        "Product UI/dashboard mockups with placeholder charts, made-up metrics or floating "
@@ -177,16 +180,29 @@ SIGNALS: tuple[Signal, ...] = (
        (0.35, 0.55), 0.35, 0.50),
     _s("eyebrow_heading_formula", STRUCTURE, "Repeated eyebrow + heading formula",
        "Повторяющаяся формула «надзаголовок + заголовок»",
-       "Nearly every section opens with the same stack: eyebrow → big heading → grey "
-       "subheading → content.",
+       "Nearly every section opens with the same stack: eyebrow or short accent underline bar "
+       "→ big heading → grey subheading → content.",
        (0.80, 0.92), 0.90, 0.85),
     _s("uniform_section_rhythm", STRUCTURE, "Uniform section rhythm", "Однообразный ритм секций",
        "Sections share one template — same spacing, alignment and structure — stacked like "
        "interchangeable blocks.",
        (0.50, 0.75), 0.60, 0.90),
+    _s("stock_section_sequence", STRUCTURE, "Stock section sequence of the genre",
+       "Типовой набор секций жанра",
+       "The page is its genre's default section list with nothing of its own: SaaS (features → "
+       "how it works → testimonials → pricing → FAQ → CTA); portfolio (about → skills grid → "
+       "experience timeline → project cards with 'Live demo' / 'GitHub' buttons → contact form); "
+       "agency (services → process → work → testimonials → contact); restaurant or shop (about "
+       "→ highlights → reviews → booking).",
+       (0.40, 0.70), 0.60, 0.90),
     _s("identical_card_grids", STRUCTURE, "Identical card grids", "Сетки одинаковых карточек",
        "Grids of identical cards: 3, 4 or 6 columns of icon + title + two-line text.",
        (0.40, 0.70), 0.55, 0.85),
+    _s("skill_chips", STRUCTURE, "Tech / skill chips", "Плашки технологий и навыков",
+       "Rows of small chips or tiles naming technologies, skills or features, each with a tiny "
+       "icon (Next.js · TypeScript · Node.js), 'Tech stack' strips, skill grids with logos or "
+       "progress bars.",
+       (0.30, 0.65), 0.50, 0.70),
     _s("repeated_cta", STRUCTURE, "Repeated identical CTA", "Одинаковые повторяющиеся CTA",
        "The same call-to-action label repeated across the page ('Get started' ×5). Use the "
        "DOM CTA counts.",
@@ -221,21 +237,27 @@ SIGNALS: tuple[Signal, ...] = (
        (0.35, 0.60), 0.45, 0.70),
     _s("boilerplate_footer", STRUCTURE, "Boilerplate footer", "Шаблонный футер",
        "Generic footer columns (Product / Company / Resources / Legal), '© 2025 Company. All "
-       "rights reserved.', placeholder social icons, newsletter field.",
+       "rights reserved.', 'Built with ❤️', placeholder social icons, newsletter field.",
        (0.20, 0.45), 0.25, 0.75),
     # ── Content ─────────────────────────────────────────────────────────────
     _s("ai_buzzwords", CONTENT, "AI marketing buzzwords", "AI-канцелярит и баззворды",
        "seamless, unlock, elevate, empower, supercharge, revolutionize, effortless, "
-       "cutting-edge, next-generation, harness, 'in seconds', 'all-in-one' (RU: бесшовный, "
-       "раскройте потенциал, революционный, инновационный, «на новый уровень», «в один клик»).",
+       "cutting-edge, next-generation, harness, 'in seconds', 'all-in-one'; portfolio clichés: "
+       "passionate, pixel-perfect, scalable, elegant solutions, 'bring your vision to life' "
+       "(RU: бесшовный, раскройте потенциал, революционный, инновационный, «на новый уровень», "
+       "«в один клик», «воплощаю идеи в жизнь»).",
        (0.50, 0.85), 0.70, 0.50),
-    _s("headline_formula", CONTENT, "Formulaic headline", "Шаблонная формула заголовка",
-       "'Transform your X with Y', 'X, reimagined', 'The future of X is here', 'Build "
-       "faster. Ship smarter.', 'Your all-in-one platform for…'.",
+    _s("headline_formula", CONTENT, "Formulaic headline or tagline", "Шаблонный заголовок или слоган",
+       "The genre's stock opening line. SaaS: 'Transform your X with Y', 'X, reimagined', 'The "
+       "future of X is here', 'Build faster. Ship smarter.'; portfolio: 'Hi, I'm {Name} — "
+       "Full-Stack Developer', 'Turning ideas into meaningful digital experiences', 'Crafting "
+       "digital experiences that…'; business: 'Where {X} meets {Y}', 'Your trusted partner in…'. "
+       "A textbook match is presence 1 and typicality 1.",
        (0.55, 0.85), 0.70, 0.55),
     _s("vague_claims", CONTENT, "Vague interchangeable claims", "Размытые взаимозаменяемые обещания",
-       "Claims that fit any product: 'Boost productivity', 'Save time', 'Built for teams', "
-       "'Secure by design' — with no specifics.",
+       "Claims that fit any product or person: 'Boost productivity', 'Save time', 'Built for "
+       "teams', 'Secure by design', value chips like 'Clean Code · Performance · Scalability' — "
+       "with no specifics.",
        (0.45, 0.70), 0.55, 0.75),
     _s("triplet_rhythm", CONTENT, "Rule-of-three rhythm", "Ритм «трёх слов»",
        "Staccato triplets ('Fast. Secure. Scalable.'), 'Not just X — it's Y', em-dash-heavy, "
@@ -253,24 +275,29 @@ SIGNALS: tuple[Signal, ...] = (
 
 HUMAN_SIGNALS: tuple[HumanSignal, ...] = (
     HumanSignal("real_photography", "Real photography", "Настоящие фотографии",
-                "Authentic photos of the actual business, products, people or places — natural "
-                "imperfections, consistent real context. Not stock, not AI.", 0.65),
+                "Authentic photos of the actual business, products, work, people or places in "
+                "context — natural imperfections, consistent real setting. Not stock, not AI. A "
+                "single cut-out portrait of a portfolio's owner is weak (presence ≤ 0.3).", 0.65),
     HumanSignal("named_team", "Named real people", "Реальные люди с именами",
-                "Owners or team members with names, genuine photos and specific bios.", 0.50),
+                "Several named people with genuine photos and specific bios. A portfolio "
+                "owner's own name and photo don't count.", 0.40),
     HumanSignal("local_specifics", "Local specifics", "Локальная конкретика",
-                "Street address, map, opening hours, directions, neighborhood or city references.",
-                0.55),
-    HumanSignal("legal_details", "Contacts and legal details", "Контакты и реквизиты",
-                "Phone numbers, real emails, company registration or tax IDs (INN/OGRN, VAT), "
-                "legal entity name, physical address.", 0.45),
+                "For a place-based business: street address with a map, opening hours, "
+                "directions, neighborhood references. A city name alone is weak.", 0.45),
+    HumanSignal("legal_details", "Legal and company details", "Юридические реквизиты",
+                "Company registration or tax IDs (INN/OGRN, VAT), legal entity name, registered "
+                "address. Plain email / phone / city are weak (presence ≤ 0.3): every template "
+                "has a contact block.", 0.30),
     HumanSignal("concrete_offer", "Concrete offer details", "Конкретика предложения",
                 "Real prices, SKUs, specs, menus, schedules, delivery terms — operational detail "
-                "a template wouldn't have.", 0.40),
+                "a template wouldn't have. A CV job entry is not this.", 0.35),
     HumanSignal("verifiable_reviews", "Verifiable reviews", "Проверяемые отзывы",
                 "Reviews with full names, photos, dates or sources (Google/Yandex/Trustpilot "
                 "widgets), or details that ring true.", 0.45),
     HumanSignal("case_studies", "Specific cases and portfolio", "Конкретные кейсы и портфолио",
-                "Named clients, concrete numbers, process artifacts, before/after work.", 0.45),
+                "Write-ups with named clients, concrete numbers, process artifacts, before/after "
+                "work. Project cards with a stack list and 'Live demo' / 'GitHub' buttons are the "
+                "template default — weak.", 0.40),
     HumanSignal("distinct_voice", "Distinct voice and insider language", "Свой голос и профессиональный язык",
                 "Domain jargon, idiosyncratic tone, opinions, humor, specific product or process "
                 "names a generator wouldn't invent.", 0.45),
@@ -279,7 +306,8 @@ HUMAN_SIGNALS: tuple[HumanSignal, ...] = (
                 "grids, unusual navigation, deliberate 'mess'.", 0.60),
     HumanSignal("handmade_visuals", "Handmade or original visuals", "Авторская графика",
                 "Custom illustrations, hand-drawn elements, handwriting, original brand artwork, "
-                "real product renders or real UI screenshots.", 0.50),
+                "real product renders or real UI screenshots of the product being sold. Project "
+                "thumbnails in a portfolio grid are weak.", 0.50),
     HumanSignal("brand_identity", "Distinctive brand identity", "Узнаваемый фирменный стиль",
                 "A coherent, distinctive system: custom logo or wordmark, unusual palette, "
                 "characterful type pairing applied consistently.", 0.50),
@@ -292,16 +320,16 @@ PATTERNS: tuple[Pattern, ...] = (
     Pattern(
         "ai_hero", "AI hero pattern", "AI-паттерн первого экрана", (FIRST_SCREEN,),
         (
-            (("eyebrow", "pill_badge", "mono_labels"), 1.6),
-            (("oversized_headline",), 1.0),
-            (("headline_formula", "ai_buzzwords", "vague_claims"), 1.4),
+            (("eyebrow", "pill_badge", "mono_labels", "skill_chips"), 1.3),
+            (("oversized_headline",), 0.8),
+            (("headline_formula", "ai_buzzwords", "vague_claims"), 1.6),
             (("dual_cta", "pill_buttons"), 1.1),
-            (("centered_symmetry",), 0.7),
+            (("centered_symmetry",), 0.5),
             (("gradient_usage", "glow_effects", "grid_dot_background", "gradient_text",
-              "serif_italic_accent"), 1.0),
-            (("fake_ui_mockup", "abstract_3d", "ai_imagery"), 0.8),
+              "serif_italic_accent", "dark_neon_theme"), 1.2),
+            (("fake_ui_mockup", "abstract_3d", "ai_imagery", "sparkle_ai_icons"), 0.8),
         ),
-        threshold=0.42, ai_weight=1.4, template_weight=0.9,
+        threshold=0.40, ai_weight=1.4, template_weight=0.9,
     ),
     Pattern(
         "ai_section_system", "AI section system", "AI-система секций", (REST,),
@@ -312,7 +340,8 @@ PATTERNS: tuple[Pattern, ...] = (
             (("repeated_cta",), 1.0),
             (("closing_cta_banner",), 0.8),
             (("how_it_works", "numbered_sections"), 0.7),
-            (("icon_tiles",), 0.9),
+            (("icon_tiles", "skill_chips"), 0.9),
+            (("stock_section_sequence",), 1.2),
         ),
         threshold=0.42, ai_weight=1.3, template_weight=1.4,
     ),
@@ -324,7 +353,7 @@ PATTERNS: tuple[Pattern, ...] = (
             (("identical_card_grids",), 1.1),
             (("bento_grid",), 0.8),
             (("glassmorphism",), 0.6),
-            (("fake_ui_mockup",), 0.6),
+            (("fake_ui_mockup", "skill_chips"), 0.6),
         ),
         threshold=0.40, ai_weight=0.7, template_weight=1.1,
     ),

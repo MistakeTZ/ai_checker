@@ -54,25 +54,28 @@ SYSTEM_PROMPT = f"""You audit websites for one question: how AI-generated does t
 
 You are the measurement step of a scoring pipeline. You receive screenshots of one page rendered on one device (desktop or mobile), exact DOM measurements, and the page's visible text. You report which catalog signals you observe and how strongly, separately for two zones. A fixed formula — not you — turns the observations into scores, and it already accounts for how specific each signal is to AI, so do not inflate or soften observations to reach a verdict. Measure what is there.
 
-Pace
-Keep your private reasoning short: one quick pass over each catalog group per zone, a few words per signal you notice. Then report every signal you can see, weak ones included (presence 0.2–0.5) — leaving out a visible weak signal biases the score as much as inventing one. Approximate numbers are fine (steps of 0.1); write your first well-grounded estimate and don't revisit it.
+Completeness
+Go through the whole catalog for each zone and report every signal you can see, weak ones included (presence 0.2–0.5): leaving out a visible signal biases the score as much as inventing one. Approximate numbers are fine (steps of 0.1).
 
 Zones
 - first_screen: screenshot 1, what a visitor sees on load before scrolling.
 - rest: every later screenshot, i.e. the page below the first screen. When there are no later screenshots, return empty lists for rest.
 Assess each zone on its own evidence. A signal visible in both zones gets an entry in both.
 
-For each signal you observe give four numbers from 0 to 1:
-- presence: how clearly the signal is there. 1 unmistakable, 0.5 arguable or partial. Leave out signals you would rate below 0.2.
-- intensity: how loud each occurrence is. 0.2 a subtle accent, 0.5 noticeable, 1 dominant.
-- coverage: how much of the zone it spans. first_screen: the share of the screen's impression it shapes (a small badge ≈ 0.1–0.2, the headline ≈ 0.3–0.5, a full-bleed background ≈ 1). rest: the share of the sections below the fold that show it.
+For each signal you observe give four numbers from 0 to 1 and an evidence string:
+- presence: how sure you are that the signal is there as described. 1 it plainly matches, 0.6 clearly there but only a partial match, 0.3 arguable. Leave out signals below 0.2.
+- intensity: how much it contributes to the look where it appears. Judge prominence, not pixel area: 0.3 a minor detail you notice only on inspection, 0.6 noticeable, 0.8 a prominent part of the design, 1 it defines the look. A gradient word in the hero headline, or the hero tagline itself, is prominent (≥ 0.7) even though it is small.
+- coverage: how widespread it is in the zone. first_screen: 1 part of the core hero composition (headline, tagline, CTAs, hero visual, background), 0.5 a secondary element, 0.2 a peripheral detail such as a corner widget. rest: the share of the sections below the fold that show it.
 - typicality: how closely this occurrence matches the textbook AI version described in the catalog. 1 textbook, 0.5 a variation, 0.2 an unusual or clearly custom take. Use 1 when the catalog describes no textbook version.
 - evidence: at most 12 words, concrete — quote text, name colors and elements. Write it in the language the message asks for.
 
-Human signals use the same presence / intensity / coverage scale (no typicality). They are evidence of a real, specific operation or of deliberate craft; report them with the same rigor.
+Scale anchor, the hero of a v0/Lovable-style landing page: the purple→blue gradient word in the headline is presence 1, intensity 0.8, coverage 1, typicality 1; the small "✨ New" badge above it is 1, 0.6, 1, 1; a faint dot grid behind everything is 0.9, 0.3, 1, 0.9.
+
+Human signals use the same presence / intensity / coverage scale (no typicality). They are evidence that people made and curated this particular site — things a generator could not produce. Content that every site of its genre carries is weak evidence even when it is real: a portfolio's owner portrait, name, email and project cards; a business's phone number. Report those with presence ≤ 0.3.
 
 Judgment rules
 - Modern is not the same as AI. Large headlines, clean layouts, cards and sans-serif type are everywhere in human-made design and the formula already treats them as weak signals. Report them at face value.
+- Judge every genre against its own stock template. An AI-generated developer portfolio, agency site or restaurant site follows its genre's defaults as predictably as a SaaS landing page does; the catalog's SaaS examples have equivalents in each genre.
 - AI-generated imagery needs visual proof: plastic skin, malformed hands, warped text or objects, impossible geometry, over-smoothed lighting. Real product screenshots and genuine photos are not AI imagery; generic stock photos have their own signal.
 - The DOM measurements are exact. Prefer them over visual impressions for counts (repeated CTA labels, gradient text, backdrop blur, eyebrows, emoji, numbered labels, icon tiles) and for fonts and background color. Use the screenshots for style, layout, imagery and anything the DOM cannot see.
 - Copy signals come from the page text and the screenshots, in whatever language the site uses.
@@ -84,42 +87,35 @@ Catalog
 {_catalog()}"""
 
 
-def _zone_schema() -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            "signals": {"type": "array", "items": {"$ref": "#/$defs/signal"}},
-            "human_signals": {"type": "array", "items": {"$ref": "#/$defs/human_signal"}},
-        },
-        "required": ["signals", "human_signals"],
-        "additionalProperties": False,
-    }
+def _object(properties: dict) -> dict:
+    return {"type": "object", "properties": properties, "required": list(properties),
+            "additionalProperties": False}
 
 
-def _observation_schema(ids: list[str], with_typicality: bool) -> dict:
+def _observation(ids: list[str], with_typicality: bool) -> dict:
     props = {"id": {"type": "string", "enum": ids}, "presence": {"type": "number"},
              "intensity": {"type": "number"}, "coverage": {"type": "number"}}
     if with_typicality:
         props["typicality"] = {"type": "number"}
     props["evidence"] = {"type": "string"}
-    return {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
+    return _object(props)
 
 
+# Sparse lists of observed signals. (A required key per signal would make the JSON a
+# checklist, but the API rejects that schema: "compiled grammar is too large".)
 # Property order is generation order: observations first, the summary last.
 SCHEMA = {
-    "type": "object",
-    "properties": {
+    **_object({
         "page_type": {"type": "string", "enum": list(PAGE_TYPES)},
         "first_screen": {"$ref": "#/$defs/zone"},
         "rest": {"$ref": "#/$defs/zone"},
         "summary": {"type": "string"},
-    },
-    "required": ["page_type", "first_screen", "rest", "summary"],
-    "additionalProperties": False,
+    }),
     "$defs": {
-        "zone": _zone_schema(),
-        "signal": _observation_schema([s.id for s in SIGNALS], with_typicality=True),
-        "human_signal": _observation_schema([h.id for h in HUMAN_SIGNALS], with_typicality=False),
+        "zone": _object({"signals": {"type": "array", "items": {"$ref": "#/$defs/signal"}},
+                         "human_signals": {"type": "array", "items": {"$ref": "#/$defs/human_signal"}}}),
+        "signal": _observation([s.id for s in SIGNALS], with_typicality=True),
+        "human_signal": _observation([h.id for h in HUMAN_SIGNALS], with_typicality=False),
     },
 }
 
@@ -186,12 +182,17 @@ def _parse_zone(raw: dict | None) -> ZoneObs:
         except (TypeError, ValueError):
             return default
 
+    def items(block) -> list[dict]:
+        if isinstance(block, dict):  # checklist format: {signal_id: {...}}
+            return [{"id": key, **value} for key, value in block.items() if isinstance(value, dict)]
+        return block or []  # list format of earlier exports
+
     zone = ZoneObs()
     for kind, catalog, target in (("signals", SIGNAL_BY_ID, zone.signals),
                                   ("human_signals", HUMAN_BY_ID, zone.human)):
-        for item in (raw or {}).get(kind) or []:
+        for item in items((raw or {}).get(kind)):
             sid = item.get("id")
-            if sid not in catalog:
+            if sid not in catalog or num(item.get("presence")) <= 0:
                 continue
             obs = Obs(num(item.get("presence")), num(item.get("intensity")), num(item.get("coverage")),
                       num(item.get("typicality"), 1.0), str(item.get("evidence") or "")[:200])

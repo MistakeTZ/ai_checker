@@ -15,7 +15,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "👋 <b>AI Site Checker</b>\n\n"
             "Send me a link and I'll tell you how AI-generated the site <i>looks</i> to a visitor.\n\n"
             "I open it in a desktop and a mobile browser, take screenshots while scrolling, "
-            "and Claude measures 46 AI signals, 12 human signals and 7 typical AI patterns. "
+            "and Claude measures 48 AI signals, 12 human signals and 7 typical AI patterns. "
             "A fixed formula turns that into a 0–100 score. The first screen weighs more than the rest of the page.\n\n"
             "Try: <code>example.com</code>"
         ),
@@ -119,7 +119,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "👋 <b>AI Site Checker</b>\n\n"
             "Пришлите ссылку — я скажу, насколько сайт <i>выглядит</i> сгенерированным нейросетью.\n\n"
             "Я открываю его в десктопном и мобильном браузере, делаю скриншоты по мере прокрутки, "
-            "а Claude измеряет 46 AI-признаков, 12 «человеческих» признаков и 7 типичных AI-паттернов. "
+            "а Claude измеряет 48 AI-признаков, 12 «человеческих» признаков и 7 типичных AI-паттернов. "
             "Фиксированная формула превращает это в оценку 0–100. Первый экран весит больше остальной страницы.\n\n"
             "Попробуйте: <code>example.com</code>"
         ),

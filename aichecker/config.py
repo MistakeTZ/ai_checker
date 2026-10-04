@@ -54,7 +54,9 @@ def _bool(name: str, default: bool) -> bool:
 
 
 def load_settings() -> Settings:
-    load_dotenv(PROJECT_ROOT / ".env")
+    # The project's .env wins over inherited variables: tools export names like
+    # CLAUDE_EFFORT (Claude Code sets it), which would silently change the bot's settings.
+    load_dotenv(PROJECT_ROOT / ".env", override=True)
     # low: measured ~6x cheaper and ~8x faster than medium with the same observations (see README).
     effort = (os.getenv("CLAUDE_EFFORT", "low") or "").strip().lower() or None
     if effort not in (None, "low", "medium", "high", "xhigh", "max"):
